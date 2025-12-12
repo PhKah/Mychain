@@ -2,7 +2,8 @@ const sha256 = require('crypto-js/sha256');
 import { Instruction } from '@metaplex-foundation/umi';
 import { ec as EC } from 'elliptic';
 const ec = new EC('secp256k1');
-
+import {Buffer} from "buffer";
+import { utf8 } from '@metaplex-foundation/umi/serializers';
 class Coin {
     public spent: boolean = false;
     constructor (
@@ -19,7 +20,7 @@ class Coin {
 }
 
 class Wallet {
-    public uxtoList: Coin[] = [];
+    public uxtolist: Coin[] = [];
     constructor (
         public owner: string
     ){
@@ -27,7 +28,7 @@ class Wallet {
     }
     getBalance() {
         let balance: number = 0;
-        for(const uxto of this.uxtoList)
+        for(const uxto of this.uxtolist)
             balance += uxto.value;
         return balance;
     }
@@ -42,9 +43,9 @@ class Wallet {
         let val: number = 0;
         while(val < minimum)
         {
-            lst.push(this.uxtoList[this.uxtoList.length - 1]);
+            lst.push(this.uxtolist[this.uxtolist.length - 1]);
             val += lst[lst.length - 1].value;
-            this.uxtoList.length--;
+            this.uxtolist.length--;
         }
         return lst;
     }
@@ -53,10 +54,13 @@ class Wallet {
         while(true) {
         const block: Block = network.getLatestBlock();
         for(const trans of block.transaction)
-            for(const out of trans.output)
-                if(sha256(this.owner) == out.scriptPubKey) this.uxtoList.push(out);
+            for(const out of trans.outputs)
+                if(sha256(this.owner) == out.scriptPubKey) this.uxtolist.push(out);
         setInterval(() => {}, 5 * 60 * 1000);
         }
+    }
+    createTransaction(from: string, to: string, amount: number) {
+        
     }
 }
 
@@ -74,12 +78,10 @@ class Transfer {
 
 class Transaction {
     public signature: string = '';
-    public merkleProof: string[] = [];
     public merkleRoot: string = '';
-    public proof: string[] = [];
     public instruction: Transfer[] = [];
-    public input: Coin[] = [];
-    public output: Coin[] = [];
+    public inputs: Coin[] = [];
+    public outputs: Coin[] = [];                                                                                                                             
     constructor(
         public sender: string,
         public fee: number = fee
@@ -89,7 +91,14 @@ class Transaction {
     }
     calculateHash()
     {
-        return "";
+            const datatohash = {
+                sender: this.sender,
+                fee: this.fee,
+                intruction: this.instruction,
+                input: this.inputs
+            }
+        const sentializeData = JSON.stringify(datatohash).toString();
+        return sha256(sentializeData).toString(); 
     }
     addInstruction(ins: Transfer)
     {
@@ -99,6 +108,7 @@ class Transaction {
     }
     signTransaction(signer: EC.KeyPair)
     {
+        this.createOutputs();
         if(signer.getPublic('hex') != this.sender)
         {
             throw new Error("You can't sign transaction of other wallets!");
@@ -110,17 +120,17 @@ class Transaction {
     createOutputs()
     {
         let total: number = 0, id: number = 0;
-        for(const it of this.input)
+        for(const it of this.inputs)
             total += it.value;
         total -= this.fee;
         for(const ins of this.instruction)
         {
             total -= ins.amount
             let out: Coin = new Coin(this.signature,id,ins.amount,sha256(ins.toAddress));
-            this.output.push(out);
+            this.outputs.push(out);
             id++;
         }
-        this.output.push(new Coin(this.signature,id,total,sha256(this.sender)));
+        this.outputs.push(new Coin(this.signature,id,total,sha256(this.sender)));
     }
     isValid()
     {
@@ -130,7 +140,7 @@ class Transaction {
                 console.log("This transaction isn't signed");
                 return false;
             }
-        if(this.input.length == 0)
+        if(this.inputs.length == 0)
             {
                 console.log("Sender hasn't provided inputs");
                 return false;
@@ -147,7 +157,6 @@ class Block {
     public size: number = 8;
     public merkleRoot: string = "";
     public mt: string[] = [];
-    public proof: string[] = [];
     constructor (
         public timestamp: number, 
         public previousHash: string
@@ -168,7 +177,6 @@ class Block {
     {
         console.log("Mining...")
         this.merkleTree(1, 0, this.transaction.length - 1);                                                                             
-        this.merkleProof(1, 0, this.transaction.length - 1);
         this.merkleRoot = this.mt[1];
         while(this.hash.substring(0,difficulty) != Array(difficulty + 1).join("0"))
         {
@@ -187,7 +195,7 @@ class Block {
         if(l > r) return;
         if(l == r) 
         {
-            this.mt[id] = this.transaction[l].signature;
+            this.mt[id] = this.transaction[l].calculateHash();
             return;
         }
         const mid = (l + r) / 2;
@@ -195,31 +203,26 @@ class Block {
         this.merkleTree(id*2+1, mid + 1, r);
         this.mt[id] = sha256(this.mt[id*2] + this.mt[id*2+1]);
     }
-    merkleProof(id: number, l: number, r: number)
-    {
-        if(l > r) return;
-        if(l == r)
+    getProof(hash: String): String[] {
+        let index: number = -1;
+        for(let i: number = 0; i < this.transaction.length; i++)
+            if(this.transaction[i].calculateHash() == hash)
+            {
+                index = i;
+                break;
+            }
+        if(index == -1)
+            throw new Error("Error: Your Transaction not in this block");
+        let id = Math.pow(2,this.size) + index;
+        let res: String[] = [];
+        while(id != 1)
         {
-            let sibling: string;
-            if(id % 2) sibling = this.mt[id - 1];
-            else sibling = this.mt[id + 1];
-            this.transaction[l].proof.push(sibling);
-            this.transaction[l].proof.concat(this.proof);
-            this.transaction[l].merkleRoot = this.mt[1];
-            return;
+            if(id % 2) res.push(this.mt[id - 1]);
+            else res.push(this.mt[id + 1]);
+            id /= 2;
         }
-        const mid = (l + r) / 2;
-        if(id != 1)
-        {
-            let sibling: string;
-            if(id % 2) sibling = this.mt[id - 1];
-            else sibling = this.mt[id + 1];
-        }
-        this.merkleProof(id * 2, l, mid);
-        this.merkleProof(id * 2 + 1, mid + 1, r);
-        this.proof.length--;
+        return res;
     }
-    
 }
 
 class Blockchain {
@@ -240,14 +243,12 @@ class Blockchain {
     }
     Mining(miner: string){
         let block = new Block(Date.now(),this.getLatestBlock().hash);
-        for(let i = 1; i <= block.size; i++)
+        for(let i = 1; i <= Math.pow(2,block.size); i++)
         {
             block.transaction.push(this.mempool[this.mempool.length - 1]);
             this.mempool.length--;
         }
         block.mineBlock(this.difficulty);
-        for(const trans of block.transaction)
-            trans.createOutputs();
         console.log("Block suscessfuly mined");
         this.chain.push(block);
     }
@@ -257,7 +258,7 @@ class Blockchain {
             throw new Error("Transaction not valid");
         this.mempool.push(trans);
     }
-    isChainValid(): any {
+    isChainValid(): boolean {
         for(let i: number = 1; i < this.chain.length; i++)
         {
             let cur: Block = this.chain[i];
@@ -269,5 +270,7 @@ class Blockchain {
     } 
 }
 let network: Blockchain = new Blockchain(2,1);
+let a:number[] = [1];
+console.log();
 module.exports.Blockchain = Blockchain;
 module.exports.Transaction = Transaction;
