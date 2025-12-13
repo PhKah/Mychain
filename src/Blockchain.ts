@@ -20,7 +20,7 @@ class Coin {
 }
 
 class Wallet {
-    public uxtolist: Coin[] = [];
+    private uxtolist: Coin[] = [];
     constructor (
         public owner: string
     ){
@@ -29,7 +29,7 @@ class Wallet {
     getBalance() {
         let balance: number = 0;
         for(const uxto of this.uxtolist)
-            balance += uxto.value;
+            if(!uxto.spent) balance += uxto.value;
         return balance;
     }
     createInputs(transaction: Transaction)
@@ -43,9 +43,11 @@ class Wallet {
         let val: number = 0;
         while(val < minimum)
         {
-            lst.push(this.uxtolist[this.uxtolist.length - 1]);
-            val += lst[lst.length - 1].value;
-            this.uxtolist.length--;
+            let cur: Coin = this.uxtolist[this.uxtolist.length - 1];
+            lst.push(cur);
+            val += cur.value;
+            cur.spent = true;
+            this.uxtolist.pop();
         }
         return lst;
     }
@@ -58,9 +60,6 @@ class Wallet {
                 if(sha256(this.owner) == out.scriptPubKey) this.uxtolist.push(out);
         setInterval(() => {}, 5 * 60 * 1000);
         }
-    }
-    createTransaction(from: string, to: string, amount: number) {
-        
     }
 }
 
@@ -83,16 +82,16 @@ class Transaction {
     public inputs: Coin[] = [];
     public outputs: Coin[] = [];                                                                                                                             
     constructor(
-        public sender: string,
-        public fee: number = fee
+        public owner: string,
+        public fee: number
     ) {
-        this.sender = sender;
+        this.owner = owner;
         this.fee = fee;
     }
     calculateHash()
     {
             const datatohash = {
-                sender: this.sender,
+                sender: this.owner,
                 fee: this.fee,
                 intruction: this.instruction,
                 input: this.inputs
@@ -102,14 +101,14 @@ class Transaction {
     }
     addInstruction(ins: Transfer)
     {
-        if(ins.fromAddress != this.sender)
+        if(ins.fromAddress != this.owner)
             throw new Error("Wrong sender address");
         this.instruction.push(ins);
     }
     signTransaction(signer: EC.KeyPair)
     {
         this.createOutputs();
-        if(signer.getPublic('hex') != this.sender)
+        if(signer.getPublic('hex') != this.owner)
         {
             throw new Error("You can't sign transaction of other wallets!");
         }
@@ -118,7 +117,13 @@ class Transaction {
         this.signature = sig.toDER('hex');
     }
     createOutputs()
-    {
+    { 
+        if(this.owner == "")
+        {
+            let out: Coin = new Coin("",0,this.instruction[0].amount,sha256(this.instruction[0].toAddress));
+            this.outputs.push(out);
+            return;
+        }
         let total: number = 0, id: number = 0;
         for(const it of this.inputs)
             total += it.value;
@@ -130,11 +135,11 @@ class Transaction {
             this.outputs.push(out);
             id++;
         }
-        this.outputs.push(new Coin(this.signature,id,total,sha256(this.sender)));
+        this.outputs.push(new Coin(this.signature,id,total,sha256(this.owner)));
     }
     isValid()
     {
-        if(this.sender == null) return true;
+        if(this.owner == null) return true;
         if(!this.signature || this.signature.length == 0)
             {
                 console.log("This transaction isn't signed");
@@ -145,7 +150,7 @@ class Transaction {
                 console.log("Sender hasn't provided inputs");
                 return false;
             }
-        const publicKey = ec.keyFromPublic(this.sender,'hex');
+        const publicKey = ec.keyFromPublic(this.owner,'hex');
         return publicKey.verify(this.calculateHash(),this.signature);
     }
 }
@@ -187,6 +192,8 @@ class Block {
     isBlockValid()
     {
         this.merkleTree(1, 0, this.transaction.length - 1);
+        for(let i: number = 1; i < this.transaction.length; i++)
+            if(this.transaction[i].owner == "") return false;
         if(this.mt[1] != this.merkleRoot) return false;
         return true;
     }
@@ -198,7 +205,7 @@ class Block {
             this.mt[id] = this.transaction[l].calculateHash();
             return;
         }
-        const mid = (l + r) / 2;
+        const mid = Math.floor((l + r) / 2);
         this.merkleTree(id*2, l , mid);
         this.merkleTree(id*2+1, mid + 1, r);
         this.mt[id] = sha256(this.mt[id*2] + this.mt[id*2+1]);
@@ -219,19 +226,20 @@ class Block {
         {
             if(id % 2) res.push(this.mt[id - 1]);
             else res.push(this.mt[id + 1]);
-            id /= 2;
+            id = Math.floor(id / 2);
         }
         return res;
     }
 }
 
 class Blockchain {
-    public mempool: Transaction[] = [];
-    public chain: Block[] = [this.createGenesis()];
+    public pendingTransactions: Transaction[] = [];
+    public chain: Block[] = [];
     constructor(
         public difficulty: number,
         public reward: number
     ) {
+        this.chain.push(this.createGenesis());
         this.difficulty = difficulty;
         this.reward = reward;
     }
@@ -241,13 +249,23 @@ class Blockchain {
     getLatestBlock(): Block {
         return this.chain[this.chain.length - 1];
     }
+    calcReward(): number {
+        return 1;
+    }
     Mining(miner: string){
         let block = new Block(Date.now(),this.getLatestBlock().hash);
-        for(let i = 1; i <= Math.pow(2,block.size); i++)
+        while (this.pendingTransactions.length < Math.pow(2,block.size)) setInterval(() => {}, 30);
+        let ttFees: number = 0;
+        while(block.transaction.length != Math.pow(2,block.size) - 1)
         {
-            block.transaction.push(this.mempool[this.mempool.length - 1]);
-            this.mempool.length--;
+            let cur: Transaction = this.pendingTransactions[this.pendingTransactions.length - 1];
+            block.transaction.push(cur);
+            ttFees += cur.fee;
+            this.pendingTransactions.pop();
         }
+        let coinBase: Transaction = new Transaction("",0), trans: Transfer = new Transfer("",miner,ttFees + this.calcReward());
+        coinBase.instruction.push(trans);
+        block.transaction.unshift(coinBase);
         block.mineBlock(this.difficulty);
         console.log("Block suscessfuly mined");
         this.chain.push(block);
@@ -256,7 +274,7 @@ class Blockchain {
     {
         if(!trans.isValid())
             throw new Error("Transaction not valid");
-        this.mempool.push(trans);
+        this.pendingTransactions.push(trans);
     }
     isChainValid(): boolean {
         for(let i: number = 1; i < this.chain.length; i++)
@@ -270,7 +288,5 @@ class Blockchain {
     } 
 }
 let network: Blockchain = new Blockchain(2,1);
-let a:number[] = [1];
-console.log();
 module.exports.Blockchain = Blockchain;
 module.exports.Transaction = Transaction;
