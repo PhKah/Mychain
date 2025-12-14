@@ -4,7 +4,8 @@ import { ec as EC } from 'elliptic';
 const ec = new EC('secp256k1');
 import {Buffer} from "buffer";
 import { utf8 } from '@metaplex-foundation/umi/serializers';
-class Coin {
+
+export class Coin {
     public spent: boolean = false;
     constructor (
         public tx: string,
@@ -19,7 +20,7 @@ class Coin {
     }
 }
 
-class Wallet {
+export class Wallet {
     private uxtolist: Coin[] = [];
     constructor (
         public owner: string
@@ -63,7 +64,7 @@ class Wallet {
     }
 }
 
-class Transfer {
+export class Transfer {
     constructor (
         public fromAddress: string,
         public toAddress: string,
@@ -75,7 +76,7 @@ class Transfer {
     }
 }
 
-class Transaction {
+export class Transaction {
     public signature: string = '';
     public merkleRoot: string = '';
     public instruction: Transfer[] = [];
@@ -155,7 +156,7 @@ class Transaction {
     }
 }
 
-class Block {
+export class Block {
     public transaction: Transaction[] = [];
     public hash: string = '';
     public nonce: number = 0;
@@ -254,6 +255,11 @@ class Blockchain {
     }
     Mining(miner: string){
         let block = new Block(Date.now(),this.getLatestBlock().hash);
+        if(this.pendingTransactions.length < Math.pow(2,block.size))
+        {
+            console.log("Not enough transaction to mine");
+            return;
+        }
         while (this.pendingTransactions.length < Math.pow(2,block.size)) setInterval(() => {}, 30);
         let ttFees: number = 0;
         while(block.transaction.length != Math.pow(2,block.size) - 1)
@@ -288,5 +294,3 @@ class Blockchain {
     } 
 }
 let network: Blockchain = new Blockchain(2,1);
-module.exports.Blockchain = Blockchain;
-module.exports.Transaction = Transaction;

@@ -26,11 +26,11 @@ Mục tiêu: Tạo ra class `Blockchain` để quản lý chuỗi khối, các g
     - [x] Định nghĩa `class Blockchain`.
     - [x] Trong `constructor`, khởi tạo chuỗi bằng cách tạo `createGenesisBlock()`.
     - [x] Thêm một mảng `mempool` (sẽ đổi tên thành `pendingTransactions`) để lưu các giao dịch đang chờ.
-    - [ ] Đổi tên `mempool` thành `pendingTransactions` cho nhất quán.
+    - [x] Đổi tên `mempool` thành `pendingTransactions` cho nhất quán.
     - [x] Tạo một khối mới với các giao dịch từ mempool.
     - [x] Gọi `mineBlock()` trên khối mới.
     - [x] Thêm khối đã được khai thác vào chuỗi (`chain`).
-    - [ ] Tạo một giao dịch thưởng cho thợ đào.
+    - [x] Tạo một giao dịch thưởng cho thợ đào.
     - [x] Triển khai phương thức `addTransaction(transaction)` để thêm giao dịch mới vào mempool.
     - [x] Triển khai phương thức `isChainValid()` để xác minh tính toàn vẹn của toàn bộ chuỗi khối.
     - [ ] Triển khai phương thức `findTransaction(transactionHash)` để tìm giao dịch trong chuỗi.
