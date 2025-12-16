@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise';
 
-const connectionOptions: mysql.PoolOptions = {
+export const connectionOptions: mysql.PoolOptions = {
     host: 'localhost',
     user: 'root',
     password: 'khanhkhanh',
@@ -15,7 +15,6 @@ export const initDatabase = async () => {
     try {
         const pool = mysql.createPool(connectionOptions);
 
-        const connection = await pool.getConnection();
         console.log('Susccessfully connected to MySQL database');
 
         const Blocks = `
@@ -39,10 +38,8 @@ export const initDatabase = async () => {
             );
         `;
 
-        await connection.query(Blocks);
-        await connection.query(Transactions);
-
-        connection.release();
+        await pool.query(Blocks);
+        await pool.query(Transactions);
 
         return pool;
     } catch (error) {

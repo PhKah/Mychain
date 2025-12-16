@@ -1,13 +1,13 @@
-import {Pool, QueryResult} from 'mysql2/promise';
 import {Block, Transaction} from '../Blockchain.ts'
+import { connectionOptions } from './database';
+import mysql from 'mysql2/promise';
 
 export class IndexerService {
-    private dbPool: Pool;
-    constructor (pool: Pool) {
+    private dbPool: mysql.Pool;
+    constructor (pool: mysql.Pool) {
         this.dbPool = pool;
     }
-
-    public async indexBlock(block: Block): Promise<void> {
+    async indexBlock(block: Block): Promise<void> {
         try {
             const blockQuery = `
                 insert into Blocks (hash, previousHash, timestamp, nonce, merkleRoot)

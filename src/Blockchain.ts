@@ -4,6 +4,7 @@ import { ec as EC } from 'elliptic';
 const ec = new EC('secp256k1');
 import {Buffer} from "buffer";
 import { utf8 } from '@metaplex-foundation/umi/serializers';
+import {IndexerService} from './Off_chain/IndexerService';
 
 export class Coin {
     public spent: boolean = false;
@@ -54,13 +55,7 @@ export class Wallet {
     }
     listen()
     {
-        while(true) {
-        const block: Block = network.getLatestBlock();
-        for(const trans of block.transaction)
-            for(const out of trans.outputs)
-                if(sha256(this.owner) == out.scriptPubKey) this.uxtolist.push(out);
-        setInterval(() => {}, 5 * 60 * 1000);
-        }
+
     }
 }
 
@@ -236,6 +231,7 @@ export class Block {
 class Blockchain {
     public pendingTransactions: Transaction[] = [];
     public chain: Block[] = [];
+    private blockIndex: Map<string, Block> = new Map();
     constructor(
         public difficulty: number,
         public reward: number
@@ -275,6 +271,7 @@ class Blockchain {
         block.mineBlock(this.difficulty);
         console.log("Block suscessfuly mined");
         this.chain.push(block);
+        this.blockIndex.set(block.hash,block);
     }
     addTransaction(trans : Transaction)
     {
@@ -291,6 +288,5 @@ class Blockchain {
                 return false;
         }
         return true;
-    } 
+    }
 }
-let network: Blockchain = new Blockchain(2,1);
